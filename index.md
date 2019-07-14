@@ -20,57 +20,20 @@ sample error to be below 0.5%.
 
 ### Exploratory analysis and preprocessing
 
-```{r echo=FALSE,message=FALSE}
-# Load libraries required for this study
-library(data.table)
-library(caret)
-library(randomForest)
-library(e1071)
-library(parallel)
-library(doParallel)
-library(pander)
 
-# Set seed to allow for reproducibility
-set.seed(15243)
-```
 
-```{r echo=FALSE}
-harTrainingDataFileName <- "pml-training.csv"
-harTrainingDataUrl <-
-    "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
 
-if (!file.exists(harTrainingDataFileName)) {
-    download.file(harTrainingDataUrl, harTrainingDataFileName)
-}
 
-harData <- fread(harTrainingDataFileName, stringsAsFactors = FALSE)
-```
-
-We load the data and notice that there are `r nrow(harData)` observations of
-`r ncol(harData)` variables. While exploring, we see that many variables contain
-mostly NA values, and the few first variables (`r names(harData)[1:7]`) are not
+We load the data and notice that there are 19622 observations of
+160 variables. While exploring, we see that many variables contain
+mostly NA values, and the few first variables (V1, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window) are not
 supposed to be used for predictions, since they are only meaningful in relation
 to the specific experiment when the were recorded. So we make a helper function
 `prepareData` to bypass those columns, leaving only the sensor-related variables
 and the output variable `classe`. We will use this function before passing data
 to build the model and also later when predicting.
 
-```{r echo=FALSE}
-# Function to remove columns that are not very useful for modeling
-prepareData <- function (df) {
-    percentNaInCols <- sapply(1:ncol(harData), function (i) {
-        sum(is.na(harData[[i]])) / nrow(harData)
-    })
-    nonNaCols <- percentNaInCols < 0.9
-    nonSensorColNames <- c("V1", "user_name", "raw_timestamp_part_1",
-                           "raw_timestamp_part_2", "cvtd_timestamp",
-                           "new_window", "num_window")
 
-    df <- df[, nonNaCols, with=FALSE]
-    df <- df[, -nonSensorColNames, with = FALSE]
-    df
-}
-```
 
 For the random forest method, it wasn't really necessary to normalize the data,
 but we use the parameter in train function `preProcess = c("center","scale")`
@@ -78,7 +41,8 @@ to achieve this for all features.
 
 ### Experimental setup
 
-```{r}
+
+```r
 # Split data into training and test sets
 inTrain <- createDataPartition(y=harData$classe, p=0.75, list=FALSE)
 
@@ -104,7 +68,8 @@ model in parallel for maximized speed (we also take care of using the seeds
 parameter to allow for reproducibility). After training, we obtained the
 following model:
 
-```{r message=FALSE,cache=TRUE,error=FALSE,warning=FALSE}
+
+```r
 cluster <- makeCluster(detectCores() - 1)
 registerDoParallel(cluster)
 
@@ -131,28 +96,57 @@ registerDoSEQ()
 modFit
 ```
 
+```
+## Random Forest 
+## 
+## 14718 samples
+##    52 predictor
+##     5 classes: 'A', 'B', 'C', 'D', 'E' 
+## 
+## Pre-processing: centered (52), scaled (52) 
+## Resampling: Cross-Validated (5 fold) 
+## Summary of sample sizes: 11775, 11773, 11775, 11776, 11773 
+## Resampling results:
+## 
+##   Accuracy   Kappa    
+##   0.9922542  0.9902014
+## 
+## Tuning parameter 'mtry' was held constant at a value of 5
+```
+
 ### Evaluation of the model
 
 We then used our model to predict the values of the `classe` variable on the
 training set and also on the kept aside test set.
 
-```{r message=FALSE}
+
+```r
 predictionOnTrainingSet <- predict(modFit, prepareData(training))
 trainingSetAccuracy <- sum(predictionOnTrainingSet == training$classe) / nrow(training)
 
 predictionOnTestSet <- predict(modFit, prepareData(testing))
 testSetAccuracy <- sum(predictionOnTestSet == testing$classe) / nrow(testing)
-
 ```
 
 As it was expected, the accuracy of the prediction over the the training set
 (the resubstitution accuracy) was high, achieving
-`r trainingSetAccuracy * 100`%. More importantly, the accuracy over the test set
-that was not used in modeling, `r testSetAccuracy * 100`% was also good enough
+100%. More importantly, the accuracy over the test set
+that was not used in modeling, 99.6737357% was also good enough
 for our purposes, so we expect the accuracy for predicting over new data to be
 similar. The following table shows the predictions that were missed on our test
 set.
 
-```{r echo=FALSE}
-pander(table(predictionOnTestSet, testing$classe))
-```
+
+---------------------------------------
+ &nbsp;    A      B     C     D     E  
+-------- ------ ----- ----- ----- -----
+ **A**    1394    5     0     0     0  
+
+ **B**     1     943    3     0     0  
+
+ **C**     0      1    852    5     0  
+
+ **D**     0      0     0    798    0  
+
+ **E**     0      0     0     1    901 
+---------------------------------------
